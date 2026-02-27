@@ -1,0 +1,98 @@
+export const LANGUAGES = [
+  {
+    id: 'node',
+    name: 'Node.js',
+    paizaLang: 'javascript',
+    editorLang: 'javascript',
+    icon: 'Terminal',
+    defaultCode: 'console.log("Hello, Node.js!");\n\n// Write your Node.js code here\nconst os = require("os");\nconsole.log("Platform:", os.platform());',
+  },
+  {
+    id: 'python',
+    name: 'Python',
+    paizaLang: 'python3',
+    editorLang: 'python',
+    icon: 'Terminal',
+    defaultCode: 'def greet(name):\n    return f"Hello, {name}!"\n\nprint(greet("Python"))\n',
+  },
+  {
+    id: 'csharp',
+    name: '.NET (C#)',
+    paizaLang: 'csharp',
+    editorLang: 'csharp',
+    icon: 'Code2',
+    defaultCode: 'using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello, .NET!");\n    }\n}',
+  },
+  {
+    id: 'mysql',
+    name: 'MySQL',
+    paizaLang: 'mysql',
+    editorLang: 'sql',
+    icon: 'Database',
+    defaultCode: '-- The database is pre-populated with `employees`, `departments`, and `projects` tables.\n-- They are connected via `department_id`.\n\nSELECT * FROM employees;\n',
+  },
+  {
+    id: 'react',
+    name: 'React',
+    paizaLang: null, // Runs in browser
+    editorLang: 'javascript',
+    icon: 'Code2',
+    defaultCode: 'function App() {\n  const [count, setCount] = React.useState(0);\n  \n  return (\n    <div style={{ padding: "20px", fontFamily: "sans-serif" }}>\n      <h1 style={{ color: "#3b82f6" }}>Hello, React!</h1>\n      <p>You clicked {count} times</p>\n      <button \n        onClick={() => setCount(count + 1)}\n        style={{ \n          padding: "8px 16px", \n          background: "#3b82f6", \n          color: "white", \n          border: "none", \n          borderRadius: "4px",\n          cursor: "pointer"\n        }}\n      >\n        Click me\n      </button>\n    </div>\n  );\n}\n\nconst root = ReactDOM.createRoot(document.getElementById("root"));\nroot.render(<App />);',
+  },
+  {
+    id: 'javascript',
+    name: 'JavaScript (Browser)',
+    paizaLang: null, // Runs in browser
+    editorLang: 'javascript',
+    icon: 'FileJson',
+    defaultCode: 'const root = document.getElementById("root");\n\nroot.innerHTML = `\n  <div style="padding: 20px; font-family: sans-serif;">\n    <h1 style="color: #10b981;">Hello, Browser JavaScript!</h1>\n    <p>This code runs directly in the browser.</p>\n    <button id="btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">\n      Click Me\n    </button>\n  </div>\n`;\n\ndocument.getElementById("btn").addEventListener("click", () => {\n  alert("Button clicked!");\n});',
+  },
+  {
+    id: 'c',
+    name: 'C',
+    paizaLang: 'c',
+    editorLang: 'c',
+    icon: 'FileCode2',
+    defaultCode: '#include <stdio.h>\n\nint main() {\n    printf("Hello, C!\\n");\n    return 0;\n}',
+  },
+  {
+    id: 'cpp',
+    name: 'C++',
+    paizaLang: 'cpp',
+    editorLang: 'cpp',
+    icon: 'FileCode2',
+    defaultCode: '#include <iostream>\n\nint main() {\n    std::cout << "Hello, C++!" << std::endl;\n    return 0;\n}',
+  },
+  {
+    id: 'java',
+    name: 'Java',
+    paizaLang: 'java',
+    editorLang: 'java',
+    icon: 'Coffee',
+    defaultCode: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, Java!");\n    }\n}',
+  },
+  {
+    id: 'typescript',
+    name: 'TypeScript',
+    paizaLang: 'typescript',
+    editorLang: 'typescript',
+    icon: 'FileType2',
+    defaultCode: 'const greeting: string = "Hello, TypeScript!";\nconsole.log(greeting);\n\ninterface User {\n  name: string;\n  age: number;\n}\n\nconst user: User = { name: "Alice", age: 25 };\nconsole.log(user);',
+  },
+  {
+    id: 'html',
+    name: 'HTML',
+    paizaLang: null, // Runs in browser
+    editorLang: 'html',
+    icon: 'Globe',
+    defaultCode: '<!DOCTYPE html>\n<html>\n<head>\n  <title>HTML Preview</title>\n  <style>\n    body {\n      font-family: sans-serif;\n      text-align: center;\n      margin-top: 50px;\n    }\n    h1 { color: #e34c26; }\n  </style>\n</head>\n<body>\n  <h1>Hello, HTML!</h1>\n  <p>This is a live preview of your HTML code.</p>\n</body>\n</html>',
+  },
+  {
+    id: 'css',
+    name: 'CSS',
+    paizaLang: null, // Runs in browser
+    editorLang: 'css',
+    icon: 'Palette',
+    defaultCode: '/* Write CSS here. It will be applied to a dummy HTML element */\nbody {\n  background-color: #282c34;\n  color: white;\n  font-family: sans-serif;\n  display: flex;\n  justify-content: center;\n  align-items: center;\n  height: 100vh;\n  margin: 0;\n}\n\n.box {\n  background: linear-gradient(45deg, #ff6b6b, #f06595);\n  padding: 40px;\n  border-radius: 10px;\n  box-shadow: 0 4px 15px rgba(0,0,0,0.3);\n  font-size: 24px;\n  font-weight: bold;\n}',
+  },
+];

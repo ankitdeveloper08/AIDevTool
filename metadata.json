@@ -1,0 +1,5 @@
+{
+  "name": "Multi-Language Online Compiler",
+  "description": "An online code editor and compiler supporting .NET, JavaScript, MySQL, Python, React, and Node.js.",
+  "requestFramePermissions": []
+}
