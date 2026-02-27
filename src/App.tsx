@@ -207,7 +207,7 @@ export default function App() {
           {isSidebarOpen && (
             <div className="flex items-center gap-2">
               <Layout className="w-5 h-5 text-blue-500" />
-              <span>AnkitDevStudio</span>
+              <span>@DevStudio</span>
             </div>
           )}
           <button 
@@ -246,7 +246,7 @@ export default function App() {
           </div>
         </div>
         <div className={cn("p-4 border-t border-gray-800 text-xs text-gray-500", !isSidebarOpen && "text-center p-2")}>
-          {isSidebarOpen ? "Developed by Ankit" : "Ankit"}
+          {isSidebarOpen ? "Developed by @" : "@"}
         </div>
       </div>
 
