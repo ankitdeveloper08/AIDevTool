@@ -5,16 +5,24 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
 
   // Proxy API for Paiza.io
   app.post('/api/execute', async (req, res) => {
     try {
       const { language, code } = req.body;
       
+      if (!code || !language) {
+        return res.status(400).json({ error: 'Code and language are required' });
+      }
+      
       const createRes = await fetch('https://api.paiza.io/runners/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
           source_code: code,
           language: language,
@@ -28,12 +36,21 @@ async function startServer() {
       }
 
       const id = createData.id;
-      let resultData = null;
+      if (!id) {
+        return res.status(500).json({ error: 'Failed to get execution ID from Paiza API' });
+      }
+
+      let resultData: any = null;
 
       // Poll for completion
       for (let i = 0; i < 15; i++) {
         await new Promise(r => setTimeout(r, 1000));
-        const statusRes = await fetch(`https://api.paiza.io/runners/get_details?id=${id}&api_key=guest`);
+        const statusRes = await fetch(`https://api.paiza.io/runners/get_details?id=${id}&api_key=guest`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json'
+          }
+        });
         resultData = await statusRes.json();
         
         if (resultData.status === 'completed') {
@@ -44,6 +61,10 @@ async function startServer() {
       if (resultData && resultData.status === 'completed') {
         if (resultData.build_result === 'failure') {
           return res.json({ error: resultData.build_stderr || 'Build failed' });
+        }
+        
+        if (resultData.result !== 'success') {
+          return res.json({ error: `Execution ${resultData.result}. ${resultData.stderr || resultData.stdout || ''}` });
         }
         
         let output = resultData.stdout || '';
