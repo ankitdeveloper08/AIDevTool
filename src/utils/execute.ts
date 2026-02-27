@@ -9,13 +9,22 @@ export const executeCode = async (language: string, code: string) => {
       }),
     });
 
-    const data = await res.json();
+    let data;
+    const text = await res.text();
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      console.error('Failed to parse response as JSON. Response text:', text);
+      return { error: `Server returned invalid response: ${text.substring(0, 100)}...` };
+    }
+
     if (!res.ok) {
-      return { error: data.error || 'Execution failed' };
+      return { error: data.error || `Execution failed with status ${res.status}` };
     }
 
     return data;
   } catch (error: any) {
+    console.error('Execution error:', error);
     return { error: error.message || 'Network error' };
   }
 };
