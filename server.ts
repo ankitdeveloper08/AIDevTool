@@ -16,18 +16,19 @@ async function startServer() {
         return res.status(400).json({ error: 'Code and language are required' });
       }
       
+      const params = new URLSearchParams();
+      params.append('source_code', code);
+      params.append('language', language);
+      params.append('api_key', 'guest');
+
       const createRes = await fetch('https://api.paiza.io/runners/create', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({
-          source_code: code,
-          language: language,
-          api_key: 'guest'
-        }),
+        body: params.toString(),
       });
       
       const createData = await createRes.json();
@@ -70,6 +71,10 @@ async function startServer() {
         let output = resultData.stdout || '';
         if (resultData.stderr) {
           output += (output ? '\n' : '') + resultData.stderr;
+        }
+        
+        if (!output) {
+          output = `DEBUG: Paiza API returned empty output.\nResult Data: ${JSON.stringify(resultData, null, 2)}\nCode Length: ${code.length}`;
         }
         
         return res.json({ output });
