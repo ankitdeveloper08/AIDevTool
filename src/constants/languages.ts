@@ -29,7 +29,7 @@ export const LANGUAGES = [
     paizaLang: 'mysql',
     editorLang: 'sql',
     icon: 'Database',
-    defaultCode: '-- The database is pre-populated with `employees`, `departments`, and `projects` tables.\n-- They are connected via `department_id`.\n\nSELECT * FROM employees;\n',
+    defaultCode: '-- The database is pre-populated with `employees`, `departments`, and `projects` tables.\n-- They are connected via `department_id`.\n\nSELECT * FROM employees;\nSELECT * FROM departments;\nSELECT * FROM projects;\n',
   },
   {
     id: 'react',

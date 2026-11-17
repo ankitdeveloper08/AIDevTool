@@ -38,6 +38,7 @@ const FILE_EXTENSIONS: Record<string, string> = {
 };
 
 const FILES_STORAGE_KEY = 'compiler-world-files';
+const LEGACY_MYSQL_DEFAULT_CODE = '-- The database is pre-populated with `employees`, `departments`, and `projects` tables.\n-- They are connected via `department_id`.\n\nSELECT * FROM employees;';
 const REACT_DEFAULT_FILES: SourceFile[] = [
   {
     id: 'react-app',
@@ -98,6 +99,11 @@ const loadFiles = (): FilesByLanguage => {
       });
       if (validFiles.length > 0) filesByLanguage[lang.id] = validFiles;
     });
+    filesByLanguage.mysql = filesByLanguage.mysql.map(file =>
+      file.id === 'mysql-main' && file.code.trim() === LEGACY_MYSQL_DEFAULT_CODE
+        ? { ...file, code: LANGUAGES.find(lang => lang.id === 'mysql')!.defaultCode }
+        : file
+    );
     const storedReactFiles = filesByLanguage.react ?? [];
     filesByLanguage.react = [
       ...REACT_DEFAULT_FILES.map(defaultFile => storedReactFiles.find(file => file.name === defaultFile.name) ?? defaultFile),
@@ -153,6 +159,7 @@ export default function App() {
   };
 
   const addFile = () => {
+    if (activeLang.id === 'mysql') return;
     const extension = FILE_EXTENSIONS[activeLang.editorLang] ?? 'txt';
     const fileNames = new Set(activeLangFiles.map(file => file.name));
     let number = 1;
@@ -456,44 +463,32 @@ export default function App() {
         <div className="flex flex-1 min-h-0 min-w-0">
           <aside className={cn('flex shrink-0 flex-col border-r border-gray-800 bg-[#151822] transition-[width] duration-200', isExplorerOpen ? 'w-56' : 'w-12')}>
             <div className={cn('flex h-11 shrink-0 items-center border-b border-gray-800 px-2', isExplorerOpen ? 'justify-between' : 'justify-center')}>
-              {isExplorerOpen ? (
-                <div className="flex items-center gap-2 px-1 text-xs font-semibold tracking-wide text-gray-400">
-                  <Files className="h-4 w-4" />
-                  EXPLORER
-                </div>
-              ) : (
+              <button
+                type="button"
+                onClick={() => setIsExplorerOpen(open => !open)}
+                className={cn(
+                  'flex items-center text-gray-400 hover:bg-gray-700 hover:text-white',
+                  isExplorerOpen
+                    ? 'min-w-0 gap-2 px-1 text-xs font-semibold tracking-wide'
+                    : 'rounded p-1'
+                )}
+                title={isExplorerOpen ? 'Collapse Explorer' : 'Expand Explorer'}
+                aria-label={isExplorerOpen ? 'Collapse Explorer' : 'Expand Explorer'}
+              >
+                <Files className={cn('shrink-0', isExplorerOpen ? 'h-4 w-4' : 'h-5 w-5')} />
+                {isExplorerOpen && <span>EXPLORER</span>}
+              </button>
+              {isExplorerOpen && activeLang.id !== 'mysql' && (
                 <button
                   type="button"
-                  onClick={() => setIsExplorerOpen(true)}
+                  onClick={addFile}
                   className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
-                  title="Expand Explorer"
-                  aria-label="Expand Explorer"
+                  title="New file"
+                  aria-label="New file"
                 >
-                  <Files className="h-5 w-5" />
+                  <FilePlus2 className="h-4 w-4" />
                 </button>
               )}
-              <div className="flex items-center gap-1">
-                {isExplorerOpen && (
-                  <button
-                    type="button"
-                    onClick={addFile}
-                    className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
-                    title="New file"
-                    aria-label="New file"
-                  >
-                    <FilePlus2 className="h-4 w-4" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setIsExplorerOpen(open => !open)}
-                  className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
-                  title={isExplorerOpen ? 'Collapse Explorer' : 'Expand Explorer'}
-                  aria-label={isExplorerOpen ? 'Collapse Explorer' : 'Expand Explorer'}
-                >
-                  {isExplorerOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                </button>
-              </div>
             </div>
             {isExplorerOpen && (
               <div className="flex-1 overflow-y-auto py-2">
