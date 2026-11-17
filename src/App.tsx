@@ -127,12 +127,16 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('Popular');
   const [activeLangId, setActiveLangId] = useState(() => getLanguageFromPath()?.id ?? LANGUAGES[0].id);
+  const [isCompilerPickerOpen, setIsCompilerPickerOpen] = useState(false);
+  const [compilerSearchQuery, setCompilerSearchQuery] = useState('');
+  const [compilerCategory, setCompilerCategory] = useState('Popular');
   const [isExplorerOpen, setIsExplorerOpen] = useState(true);
   const [filesByLang, setFilesByLang] = useState<FilesByLanguage>(loadFiles);
   const [activeFileByLang, setActiveFileByLang] = useState<Record<string, string>>({});
   const [outputMap, setOutputMap] = useState<Record<string, string>>({});
   const [isRunning, setIsRunning] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const compilerPickerRef = useRef<HTMLDivElement>(null);
 
   const [dbTables, setDbTables] = useState(SQL_TABLES);
 
@@ -148,6 +152,10 @@ export default function App() {
   const visibleLanguages = LANGUAGES.filter(lang =>
     LANGUAGE_CATEGORIES[activeCategory].includes(lang.id) &&
     lang.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+  );
+  const pickerLanguages = LANGUAGES.filter(lang =>
+    LANGUAGE_CATEGORIES[compilerCategory].includes(lang.id) &&
+    lang.name.toLowerCase().includes(compilerSearchQuery.trim().toLowerCase())
   );
 
   const selectLanguage = (languageId: string) => {
@@ -198,6 +206,26 @@ export default function App() {
     window.addEventListener('popstate', syncWithPath);
     return () => window.removeEventListener('popstate', syncWithPath);
   }, []);
+
+  useEffect(() => {
+    if (!isCompilerPickerOpen) return;
+
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !compilerPickerRef.current?.contains(event.target)) {
+        setIsCompilerPickerOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsCompilerPickerOpen(false);
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isCompilerPickerOpen]);
 
   useEffect(() => {
     localStorage.setItem(FILES_STORAGE_KEY, JSON.stringify(filesByLang));
@@ -366,6 +394,52 @@ export default function App() {
     setIsRunning(false);
   };
 
+  const sqlTerminalPanel = activeLang.id === 'mysql' && (
+    <div className="flex h-64 shrink-0 flex-col border-t border-gray-800 bg-[#0f111a]">
+      <div className="flex h-10 shrink-0 items-center border-b border-gray-800 bg-[#151822] px-4">
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Terminal Output</span>
+      </div>
+      <div className="flex-1 overflow-auto bg-[#0f111a] p-4">
+        {!output ? (
+          <span className="font-mono text-sm italic text-gray-600">Run your code to see the output here...</span>
+        ) : sqlOutputTables.length > 0 ? (
+          <div className="space-y-6">
+            {sqlOutputTables.map((table, i) => (
+              <div key={i} className="overflow-hidden rounded-md border border-gray-800 bg-[#151822]">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-gray-300">
+                    <thead className="bg-gray-800/50 text-gray-200">
+                      <tr>
+                        {table.headers.map((header, j) => (
+                          <th key={j} className="whitespace-nowrap border-b border-gray-800 px-4 py-2 font-medium">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {table.rows.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30">
+                          {row.map((cell, cellIndex) => (
+                            <td key={cellIndex} className="whitespace-nowrap px-4 py-2">
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="whitespace-pre-wrap font-mono text-sm text-gray-300">{output}</div>
+        )}
+      </div>
+    </div>
+  );
+
   return isHome ? (
     <main className="min-h-screen bg-[#0f111a] text-gray-200">
       <section className="mx-auto max-w-[1720px] px-5 pb-12 pt-10 sm:px-8 lg:px-12">
@@ -434,8 +508,8 @@ export default function App() {
     <div className="flex h-screen w-full bg-[#0f111a] text-gray-300 font-sans overflow-hidden">
       <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
-        <div className="h-14 border-b border-gray-800 bg-[#151822] flex items-center justify-between px-4 flex-shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-gray-800 bg-[#151822] px-4">
+          <div className="flex items-center gap-2 justify-self-start">
             <button
               type="button"
               onClick={() => {
@@ -449,14 +523,94 @@ export default function App() {
               <span className="font-semibold">Compiler World</span>
             </button>
           </div>
-          <button
-            onClick={handleRun}
-            disabled={isRunning}
-            className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Run Code
-          </button>
+          <div className="flex items-center gap-2 justify-self-center">
+            <div className="relative" ref={compilerPickerRef}>
+              <button
+                type="button"
+                onClick={() => setIsCompilerPickerOpen(open => !open)}
+                aria-expanded={isCompilerPickerOpen}
+                aria-haspopup="dialog"
+                className="flex items-center gap-2 rounded-md border border-gray-700 bg-[#0f111a] px-3 py-1.5 text-sm text-gray-200 transition-colors hover:bg-gray-800"
+              >
+                <span>{activeLang.name}</span>
+                <ChevronDown className={cn('h-4 w-4 transition-transform', isCompilerPickerOpen && 'rotate-180')} />
+              </button>
+              {isCompilerPickerOpen && (
+                <div
+                  role="dialog"
+                  aria-label="Choose a compiler"
+                  className="fixed left-1/2 top-1/2 z-50 w-[min(90vw,40rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-gray-700 bg-[#151822] p-4 shadow-2xl"
+                >
+                  <label className="flex h-10 items-center gap-2 rounded-lg border border-gray-700 bg-[#0f111a] px-3 text-gray-400 focus-within:border-blue-500">
+                    <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <input
+                      autoFocus
+                      aria-label="Search compilers"
+                      value={compilerSearchQuery}
+                      onChange={event => setCompilerSearchQuery(event.target.value)}
+                      placeholder="Search languages..."
+                      className="h-full w-full bg-transparent text-sm text-gray-100 outline-none placeholder:text-gray-500"
+                    />
+                  </label>
+                  <div className="mt-3 flex gap-1 overflow-x-auto rounded-lg bg-[#0f111a] p-1" role="tablist" aria-label="Compiler categories">
+                    {Object.keys(LANGUAGE_CATEGORIES).map(category => (
+                      <button
+                        key={category}
+                        type="button"
+                        role="tab"
+                        aria-selected={compilerCategory === category}
+                        onClick={() => setCompilerCategory(category)}
+                        className={cn(
+                          'shrink-0 rounded-md px-3 py-1.5 text-xs text-gray-400 transition-colors hover:text-gray-100',
+                          compilerCategory === category && 'bg-blue-600 font-semibold text-white'
+                        )}
+                      >
+                        {category}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                    {pickerLanguages.map(lang => {
+                      const mark = LANGUAGE_MARKS[lang.id];
+                      return (
+                        <button
+                          key={lang.id}
+                          type="button"
+                          onClick={() => {
+                            selectLanguage(lang.id);
+                            setIsHome(false);
+                            setIsCompilerPickerOpen(false);
+                          }}
+                          className="flex items-center justify-between rounded-lg border border-gray-800 bg-[#0f111a] px-3 py-2 text-left transition-colors hover:border-blue-500/70 hover:bg-[#1a2030]"
+                        >
+                          <span className="text-sm font-medium text-gray-100">{lang.name}</span>
+                          <span
+                            aria-hidden="true"
+                            className="flex h-9 min-w-9 items-center justify-center rounded-lg px-1 text-sm font-bold"
+                            style={{ color: mark.color, backgroundColor: mark.background }}
+                          >
+                            {mark.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {pickerLanguages.length === 0 && (
+                      <p className="col-span-full py-6 text-center text-sm text-gray-500">No matching compilers.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={handleRun}
+              disabled={isRunning}
+              className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              Run Code
+            </button>
+          </div>
+          <div aria-hidden="true" />
         </div>
 
         {/* Editor & Output Split */}
@@ -515,7 +669,8 @@ export default function App() {
           </aside>
           <div className="flex min-w-0 flex-1 flex-col lg:flex-row">
           {/* Left Pane: Editor (and Output if MySQL) */}
-          <div className="flex-1 flex flex-col border-b lg:border-b-0 lg:border-r border-gray-800 min-h-0 min-w-0">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col border-b border-gray-800 lg:border-b-0 lg:border-r">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="flex h-12 shrink-0 items-stretch overflow-x-auto border-b border-gray-800 bg-[#151822]">
               {activeLangFiles.map(file => {
                 const isActive = activeFile?.id === file.id;
@@ -554,7 +709,7 @@ export default function App() {
                 <Plus className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 relative min-h-0">
+            <div className="relative min-h-0 flex-1">
               <Editor
                 height="100%"
                 language={activeLang.id === 'react' && activeFile?.name.endsWith('.json')
@@ -578,55 +733,8 @@ export default function App() {
                 }}
               />
             </div>
-
-            {/* MySQL Output at bottom of Editor */}
-            {activeLang.id === 'mysql' && (
-              <div className="h-64 border-t border-gray-800 flex flex-col bg-[#0f111a] min-h-0 min-w-0">
-                <div className="h-10 border-b border-gray-800 flex items-center px-4 flex-shrink-0 bg-[#151822]">
-                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Terminal Output
-                  </span>
-                </div>
-                <div className="flex-1 p-4 overflow-auto bg-[#0f111a]">
-                  {!output ? (
-                    <span className="text-gray-600 italic font-mono text-sm">Run your code to see the output here...</span>
-                  ) : sqlOutputTables.length > 0 ? (
-                    <div className="space-y-6">
-                      {sqlOutputTables.map((table, i) => (
-                        <div key={i} className="border border-gray-800 rounded-md overflow-hidden bg-[#151822]">
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm text-gray-300">
-                              <thead className="bg-gray-800/50 text-gray-200">
-                                <tr>
-                                  {table.headers.map((header, j) => (
-                                    <th key={j} className="px-4 py-2 font-medium border-b border-gray-800 whitespace-nowrap">
-                                      {header}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {table.rows.map((row, rowIndex) => (
-                                  <tr key={rowIndex} className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30">
-                                    {row.map((cell, cellIndex) => (
-                                      <td key={cellIndex} className="px-4 py-2 whitespace-nowrap">
-                                        {cell}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="font-mono text-sm text-gray-300 whitespace-pre-wrap">{output}</div>
-                  )}
-                </div>
-              </div>
-            )}
+            {sqlTerminalPanel}
+            </div>
           </div>
 
           {/* Right Pane: DB Tables (if MySQL) or Output (if not MySQL) */}
@@ -720,7 +828,7 @@ export default function App() {
                 )}
               </>
             ) : (
-              <div className="flex-1 flex flex-col bg-[#0f111a] min-h-0">
+              <div className="flex min-h-0 flex-1 flex-col bg-[#0f111a]">
                 <div className="h-10 border-b border-gray-800 flex items-center px-4 flex-shrink-0 bg-[#151822]">
                   <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     {activeLang.paizaLang ? 'Terminal Output' : 'Browser Preview'}
