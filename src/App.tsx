@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Plus, X, Database, Loader2, Layout, ChevronLeft, ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp, Search, Files, FileCode2, FilePlus2 } from 'lucide-react';
+import { Play, Plus, X, Database, Loader2, Layout, ChevronLeft, ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp, Search, Files, FileCode2, PanelRight } from 'lucide-react';
 import { cn } from './utils/cn';
 import { LANGUAGES } from './constants/languages';
 import { executeCode } from './utils/execute';
@@ -617,30 +617,31 @@ export default function App() {
         <div className="flex flex-1 min-h-0 min-w-0">
           <aside className={cn('flex shrink-0 flex-col border-r border-gray-800 bg-[#151822] transition-[width] duration-200', isExplorerOpen ? 'w-56' : 'w-12')}>
             <div className={cn('flex h-11 shrink-0 items-center border-b border-gray-800 px-2', isExplorerOpen ? 'justify-between' : 'justify-center')}>
-              <button
-                type="button"
-                onClick={() => setIsExplorerOpen(open => !open)}
-                className={cn(
-                  'flex items-center text-gray-400 hover:bg-gray-700 hover:text-white',
-                  isExplorerOpen
-                    ? 'min-w-0 gap-2 px-1 text-xs font-semibold tracking-wide'
-                    : 'rounded p-1'
-                )}
-                title={isExplorerOpen ? 'Collapse Explorer' : 'Expand Explorer'}
-                aria-label={isExplorerOpen ? 'Collapse Explorer' : 'Expand Explorer'}
-              >
-                <Files className={cn('shrink-0', isExplorerOpen ? 'h-4 w-4' : 'h-5 w-5')} />
-                {isExplorerOpen && <span>EXPLORER</span>}
-              </button>
-              {isExplorerOpen && activeLang.id !== 'mysql' && (
+              {isExplorerOpen ? (
+                <>
+                  <div className="flex items-center gap-2 px-1 text-xs font-semibold tracking-wide text-gray-400">
+                    <Files className="h-4 w-4" />
+                    EXPLORER
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsExplorerOpen(false)}
+                    className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+                    title="Collapse Explorer"
+                    aria-label="Collapse Explorer"
+                  >
+                    <PanelRight className="h-4 w-4" />
+                  </button>
+                </>
+              ) : (
                 <button
                   type="button"
-                  onClick={addFile}
+                  onClick={() => setIsExplorerOpen(true)}
                   className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
-                  title="New file"
-                  aria-label="New file"
+                  title="Expand Explorer"
+                  aria-label="Expand Explorer"
                 >
-                  <FilePlus2 className="h-4 w-4" />
+                  <PanelRight className="h-5 w-5" />
                 </button>
               )}
             </div>
