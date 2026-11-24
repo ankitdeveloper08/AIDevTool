@@ -137,8 +137,12 @@ export default function App() {
   const [isRunning, setIsRunning] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const compilerPickerRef = useRef<HTMLDivElement>(null);
+  const sqlEditorColumnRef = useRef<HTMLDivElement>(null);
+  const compilerOutputLayoutRef = useRef<HTMLDivElement>(null);
 
   const [dbTables, setDbTables] = useState(SQL_TABLES);
+  const [sqlTerminalHeight, setSqlTerminalHeight] = useState(256);
+  const [compilerOutputSize, setCompilerOutputSize] = useState(40);
 
   const activeLang = LANGUAGES.find(l => l.id === activeLangId)!;
   const activeLangFiles = filesByLang[activeLangId] ?? [];
@@ -395,7 +399,7 @@ export default function App() {
   };
 
   const sqlTerminalPanel = activeLang.id === 'mysql' && (
-    <div className="flex h-64 shrink-0 flex-col border-t border-gray-800 bg-[#0f111a]">
+    <div className="flex min-h-0 shrink-0 flex-col border-t border-gray-800 bg-[#0f111a]" style={{ height: sqlTerminalHeight }}>
       <div className="flex h-10 shrink-0 items-center border-b border-gray-800 bg-[#151822] px-4">
         <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Terminal Output</span>
       </div>
@@ -668,10 +672,13 @@ export default function App() {
               </div>
             )}
           </aside>
-          <div className="flex min-w-0 flex-1 flex-col lg:flex-row">
+          <div
+            ref={compilerOutputLayoutRef}
+            className="flex min-w-0 flex-1 flex-col lg:flex-row"
+          >
           {/* Left Pane: Editor (and Output if MySQL) */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col border-b border-gray-800 lg:border-b-0 lg:border-r">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div ref={sqlEditorColumnRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="flex h-12 shrink-0 items-stretch overflow-x-auto border-b border-gray-800 bg-[#151822]">
               {activeLangFiles.map(file => {
                 const isActive = activeFile?.id === file.id;
@@ -734,6 +741,24 @@ export default function App() {
                 }}
               />
             </div>
+            {activeLang.id === 'mysql' && (
+              <div
+                role="separator"
+                aria-label="Resize SQL terminal output"
+                onPointerDown={event => {
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={event => {
+                  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                  const bounds = sqlEditorColumnRef.current?.getBoundingClientRect();
+                  if (!bounds) return;
+                  const maxHeight = Math.max(120, Math.min(bounds.height * 0.7, bounds.height - 160));
+                  setSqlTerminalHeight(Math.min(maxHeight, Math.max(120, bounds.bottom - event.clientY)));
+                }}
+                className="z-10 h-1 w-full shrink-0 cursor-row-resize touch-none bg-gray-800 transition-colors hover:bg-blue-500"
+              />
+            )}
             {sqlTerminalPanel}
             </div>
           </div>
@@ -829,7 +854,26 @@ export default function App() {
                 )}
               </>
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col bg-[#0f111a]">
+              <>
+                <div
+                  role="separator"
+                  aria-label="Resize terminal output"
+                  onPointerDown={event => {
+                    event.preventDefault();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }}
+                  onPointerMove={event => {
+                    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                    const bounds = compilerOutputLayoutRef.current?.getBoundingClientRect();
+                    if (!bounds) return;
+                    const outputSize = window.innerWidth >= 1024
+                      ? ((bounds.right - event.clientX) / bounds.width) * 100
+                      : ((bounds.bottom - event.clientY) / bounds.height) * 100;
+                    setCompilerOutputSize(Math.min(70, Math.max(20, outputSize)));
+                  }}
+                  className="z-10 h-1 w-full shrink-0 cursor-row-resize touch-none bg-gray-800 transition-colors hover:bg-blue-500 lg:h-auto lg:w-1 lg:cursor-col-resize"
+                />
+              <div className="flex min-h-0 min-w-0 flex-col bg-[#0f111a]" style={{ flex: `0 0 ${compilerOutputSize}%` }}>
                 <div className="h-10 border-b border-gray-800 flex items-center px-4 flex-shrink-0 bg-[#151822]">
                   <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     {activeLang.paizaLang ? 'Terminal Output' : 'Browser Preview'}
@@ -852,6 +896,7 @@ export default function App() {
                   )}
                 </div>
               </div>
+              </>
             )}
           </div>
           </div>
