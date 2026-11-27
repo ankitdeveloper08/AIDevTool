@@ -1,11 +1,49 @@
 import express from 'express';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createServer as createViteServer } from 'vite';
+import { LANGUAGES } from './src/constants/languages';
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.use(express.json({ limit: '10mb' }));
+
+  app.post('/api/save-code', async (req, res) => {
+    const body = req.body as { languageId?: unknown; fileName?: unknown; code?: unknown } | undefined;
+    const { languageId, fileName, code } = body ?? {};
+    const language = LANGUAGES.find(candidate => candidate.id === languageId);
+
+    if (!language || typeof fileName !== 'string' || typeof code !== 'string') {
+      return res.status(400).json({ error: 'A valid language, filename, and code are required' });
+    }
+
+    const folderName = (language.id === 'csharp'
+      ? 'C#'
+      : language.id === 'mysql'
+        ? 'SQL'
+        : language.name).replace(/[<>:"/\\|?*]/g, '_');
+    const baseName = fileName
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+      .replace(/\.[^.]*$/, '')
+      .replace(/[. ]+$/g, '')
+      .trim()
+      .slice(0, 100);
+    const safeBaseName = baseName || 'code';
+    const outputDirectory = join(homedir(), 'Downloads', 'Compiler World', folderName);
+    const outputPath = join(outputDirectory, `${safeBaseName}.txt`);
+
+    try {
+      await mkdir(outputDirectory, { recursive: true });
+      await writeFile(outputPath, code, 'utf8');
+      return res.json({ path: outputPath });
+    } catch (error) {
+      console.error('Code save error:', error);
+      return res.status(500).json({ error: 'Could not save the code file' });
+    }
+  });
 
   // Proxy API for Paiza.io
   app.post('/api/execute', async (req, res) => {

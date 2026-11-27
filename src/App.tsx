@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Plus, X, Database, Loader2, Layout, ChevronLeft, ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp, Search, Files, FileCode2, PanelRight } from 'lucide-react';
+import { Play, Plus, X, Database, Loader2, Layout, ChevronLeft, ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp, Search, Files, FileCode2, PanelRight, Save } from 'lucide-react';
 import { cn } from './utils/cn';
 import { LANGUAGES } from './constants/languages';
 import { executeCode } from './utils/execute';
@@ -135,6 +135,8 @@ export default function App() {
   const [activeFileByLang, setActiveFileByLang] = useState<Record<string, string>>({});
   const [outputMap, setOutputMap] = useState<Record<string, string>>({});
   const [isRunning, setIsRunning] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ text: string; isError: boolean } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const compilerPickerRef = useRef<HTMLDivElement>(null);
   const sqlEditorColumnRef = useRef<HTMLDivElement>(null);
@@ -183,6 +185,52 @@ export default function App() {
     };
     setFilesByLang(prev => ({ ...prev, [activeLangId]: [...(prev[activeLangId] ?? []), file] }));
     setActiveFileByLang(prev => ({ ...prev, [activeLangId]: file.id }));
+  };
+
+  const handleSaveCode = async () => {
+    if (!activeFile) return;
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    try {
+      const response = await fetch('/api/save-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          languageId: activeLangId,
+          fileName: activeFile.name,
+          code,
+        }),
+      });
+      const responseText = await response.text();
+      let result: { error?: string; path?: string } = {};
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText) as { error?: string; path?: string };
+        } catch {
+          if (!response.ok) {
+            throw new Error(`Save endpoint unavailable (HTTP ${response.status}). Restart the app with npm run dev and try again.`);
+          }
+          throw new Error('Save endpoint returned an invalid response. Restart the app with npm run dev and try again.');
+        }
+      } else if (response.ok) {
+        throw new Error('Save endpoint returned an empty response. Restart the app with npm run dev and try again.');
+      }
+
+      if (!response.ok) {
+        throw new Error(result.error || `Save failed (HTTP ${response.status})`);
+      }
+      if (!result.path) {
+        throw new Error('Save endpoint did not return the saved file path.');
+      }
+
+      setSaveMessage({ text: `Saved to ${result.path}`, isError: false });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save the code file';
+      setSaveMessage({ text: `Save failed: ${message}`, isError: true });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const closeFile = (fileId: string) => {
@@ -512,7 +560,7 @@ export default function App() {
     <div className="flex h-screen w-full bg-[#0f111a] text-gray-300 font-sans overflow-hidden">
       <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
-        <div className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-gray-800 bg-[#151822] px-4">
+        <div className="relative grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-gray-800 bg-[#151822] px-4">
           <div className="flex items-center gap-2 justify-self-start">
             <button
               type="button"
@@ -606,6 +654,16 @@ export default function App() {
               )}
             </div>
             <button
+              type="button"
+              onClick={handleSaveCode}
+              disabled={isSaving || !activeFile}
+              className="flex items-center gap-2 rounded-md border border-gray-700 px-3 py-1.5 text-sm text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Save code as a text file"
+            >
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save
+            </button>
+            <button
               onClick={handleRun}
               disabled={isRunning}
               className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -614,6 +672,20 @@ export default function App() {
               Run Code
             </button>
           </div>
+          {saveMessage && (
+            <div
+              role="status"
+              aria-live="polite"
+              className={cn(
+                'absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2 rounded-md border px-3 py-1.5 text-xs shadow-lg',
+                saveMessage.isError
+                  ? 'border-red-500/40 bg-[#151822] text-red-300'
+                  : 'border-green-500/40 bg-[#151822] text-green-300'
+              )}
+            >
+              {saveMessage.text}
+            </div>
+          )}
           <div aria-hidden="true" />
         </div>
 
