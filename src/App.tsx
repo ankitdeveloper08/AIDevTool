@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Plus, X, Database, Loader2, Layout, ChevronLeft, ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp, Search, Files, FileCode2, PanelRight, Save } from 'lucide-react';
+import { Play, Plus, X, Database, Loader2, Layout, ChevronLeft, ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp, Search, Files, FileCode2, PanelRight, Save, History } from 'lucide-react';
 import { cn } from './utils/cn';
 import { LANGUAGES } from './constants/languages';
 import { executeCode } from './utils/execute';
@@ -31,6 +31,12 @@ const LANGUAGE_CATEGORIES: Record<string, string[]> = {
 
 type SourceFile = { id: string; name: string; code: string };
 type FilesByLanguage = Record<string, SourceFile[]>;
+type SavedCodeEntry = {
+  languageId: string;
+  languageName: string;
+  fileName: string;
+  updatedAt: string;
+};
 
 const FILE_EXTENSIONS: Record<string, string> = {
   javascript: 'js', python: 'py', csharp: 'cs', html: 'html', css: 'css',
@@ -137,6 +143,13 @@ export default function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [isSavedCodeHistoryOpen, setIsSavedCodeHistoryOpen] = useState(false);
+  const [savedCodeFiles, setSavedCodeFiles] = useState<SavedCodeEntry[]>([]);
+  const [isSavedCodeLoading, setIsSavedCodeLoading] = useState(false);
+  const [isSavedCodeContentLoading, setIsSavedCodeContentLoading] = useState(false);
+  const [savedCodeError, setSavedCodeError] = useState<string | null>(null);
+  const [selectedSavedCode, setSelectedSavedCode] = useState<SavedCodeEntry | null>(null);
+  const [savedCodeContent, setSavedCodeContent] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const compilerPickerRef = useRef<HTMLDivElement>(null);
   const sqlEditorColumnRef = useRef<HTMLDivElement>(null);
@@ -151,8 +164,13 @@ export default function App() {
   const activeFile = activeLangFiles.find(file => file.id === activeFileByLang[activeLangId]) ?? activeLangFiles[0];
   const code = activeFile?.code ?? '';
   const output = outputMap[activeLangId] || '';
+  const [saveFileName, setSaveFileName] = useState('');
   const [expandedTables, setExpandedTables] = useState<string[]>([]);
   const [isDbPanelOpen, setIsDbPanelOpen] = useState(true);
+
+  useEffect(() => {
+    setSaveFileName(activeFile?.name.replace(/\.[^.]*$/, '') ?? '');
+  }, [activeLangId, activeFile?.id]);
   
   const sqlOutputTables = activeLang.id === 'mysql' && output ? parseSQLOutput(output) : [];
   const visibleLanguages = LANGUAGES.filter(lang =>
@@ -163,6 +181,7 @@ export default function App() {
     LANGUAGE_CATEGORIES[compilerCategory].includes(lang.id) &&
     lang.name.toLowerCase().includes(compilerSearchQuery.trim().toLowerCase())
   );
+  const activeLanguageSavedCodeFiles = savedCodeFiles.filter(file => file.languageId === activeLangId);
 
   const selectLanguage = (languageId: string) => {
     const path = `/${getLanguageSlug(languageId)}`;
@@ -189,6 +208,11 @@ export default function App() {
 
   const handleSaveCode = async () => {
     if (!activeFile) return;
+    if (!saveFileName.trim()) {
+      setSaveMessage({ text: 'Enter a filename before saving.', isError: true });
+      return;
+    }
+
     setIsSaving(true);
     setSaveMessage(null);
 
@@ -198,7 +222,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           languageId: activeLangId,
-          fileName: activeFile.name,
+          fileName: saveFileName,
           code,
         }),
       });
@@ -208,28 +232,65 @@ export default function App() {
         try {
           result = JSON.parse(responseText) as { error?: string; path?: string };
         } catch {
-          if (!response.ok) {
-            throw new Error(`Save endpoint unavailable (HTTP ${response.status}). Restart the app with npm run dev and try again.`);
-          }
-          throw new Error('Save endpoint returned an invalid response. Restart the app with npm run dev and try again.');
+          throw new Error(`Save service returned an invalid response (HTTP ${response.status}).`);
         }
-      } else if (response.ok) {
-        throw new Error('Save endpoint returned an empty response. Restart the app with npm run dev and try again.');
       }
 
       if (!response.ok) {
         throw new Error(result.error || `Save failed (HTTP ${response.status})`);
       }
       if (!result.path) {
-        throw new Error('Save endpoint did not return the saved file path.');
+        throw new Error('Save service did not return the saved file path.');
       }
 
-      setSaveMessage({ text: `Saved to ${result.path}`, isError: false });
+      setSaveMessage({ text: 'Code saved successfully.', isError: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not save the code file';
       setSaveMessage({ text: `Save failed: ${message}`, isError: true });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleOpenSavedCodeHistory = async () => {
+    setIsSavedCodeHistoryOpen(true);
+    setIsSavedCodeLoading(true);
+    setSavedCodeError(null);
+    setSelectedSavedCode(null);
+    setSavedCodeContent(null);
+
+    try {
+      const response = await fetch('/api/saved-code');
+      const result: { error?: string; files?: SavedCodeEntry[] } = await response.json();
+      if (!response.ok) throw new Error(result.error || `Could not load saved code (HTTP ${response.status})`);
+      setSavedCodeFiles(result.files ?? []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load saved code history';
+      setSavedCodeError(message);
+      setSavedCodeFiles([]);
+    } finally {
+      setIsSavedCodeLoading(false);
+    }
+  };
+
+  const handleSelectSavedCode = async (file: SavedCodeEntry) => {
+    setSelectedSavedCode(file);
+    setSavedCodeContent(null);
+    setSavedCodeError(null);
+    setIsSavedCodeContentLoading(true);
+
+    try {
+      const params = new URLSearchParams({ languageId: file.languageId, fileName: file.fileName });
+      const response = await fetch(`/api/saved-code/file?${params.toString()}`);
+      const result: { error?: string; code?: string } = await response.json();
+      if (!response.ok) throw new Error(result.error || `Could not open saved code (HTTP ${response.status})`);
+      if (typeof result.code !== 'string') throw new Error('The saved code response was invalid');
+      setSavedCodeContent(result.code);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not open the saved code file';
+      setSavedCodeError(message);
+    } finally {
+      setIsSavedCodeContentLoading(false);
     }
   };
 
@@ -653,6 +714,15 @@ export default function App() {
                 </div>
               )}
             </div>
+            <input
+              type="text"
+              aria-label="Save filename"
+              value={saveFileName}
+              onChange={event => setSaveFileName(event.target.value)}
+              disabled={isSaving}
+              placeholder="Filename"
+              className="w-28 rounded-md border border-gray-700 bg-[#0f111a] px-2 py-1.5 text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-blue-500 disabled:opacity-50 sm:w-36"
+            />
             <button
               type="button"
               onClick={handleSaveCode}
@@ -662,6 +732,16 @@ export default function App() {
             >
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenSavedCodeHistory}
+              className="flex items-center gap-2 rounded-md border border-gray-700 px-3 py-1.5 text-sm text-gray-200 transition-colors hover:bg-gray-800"
+              title="View saved code history"
+              aria-label="View saved code history"
+            >
+              <History className="h-4 w-4" />
+              Saved Code
             </button>
             <button
               onClick={handleRun}
@@ -973,6 +1053,92 @@ export default function App() {
           </div>
           </div>
         </div>
+      {isSavedCodeHistoryOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) setIsSavedCodeHistoryOpen(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Saved code history"
+            className="flex h-[min(85vh,48rem)] w-[min(92vw,64rem)] min-h-0 flex-col overflow-hidden rounded-xl border border-gray-700 bg-[#151822] shadow-2xl"
+          >
+            <header className="flex h-12 shrink-0 items-center justify-between border-b border-gray-800 px-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-gray-100">
+                <History className="h-4 w-4 text-blue-400" />
+                Saved Code History · {activeLang.name}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSavedCodeHistoryOpen(false)}
+                className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white"
+                aria-label="Close saved code history"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+            <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+              <div className="max-h-48 shrink-0 overflow-y-auto border-b border-gray-800 md:max-h-none md:w-72 md:border-b-0 md:border-r">
+                {isSavedCodeLoading ? (
+                  <div className="flex items-center gap-2 p-4 text-sm text-gray-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading saved files...
+                  </div>
+                ) : savedCodeError && !selectedSavedCode ? (
+                  <p className="p-4 text-sm text-red-300">{savedCodeError}</p>
+                ) : activeLanguageSavedCodeFiles.length === 0 ? (
+                  <p className="p-4 text-sm text-gray-500">No saved {activeLang.name} files yet.</p>
+                ) : (
+                  <div className="space-y-1 p-2">
+                    {activeLanguageSavedCodeFiles.map(file => (
+                      <button
+                        key={`${file.languageId}/${file.fileName}`}
+                        type="button"
+                        onClick={() => handleSelectSavedCode(file)}
+                        className={cn(
+                          'flex w-full flex-col items-start rounded-md px-3 py-2 text-left transition-colors hover:bg-gray-800/70',
+                          selectedSavedCode?.languageId === file.languageId && selectedSavedCode.fileName === file.fileName
+                            ? 'bg-blue-500/15 text-blue-100'
+                            : 'text-gray-300'
+                        )}
+                      >
+                        <span className="w-full truncate text-sm font-medium">{file.fileName}</span>
+                        <span className="mt-1 text-xs text-gray-500">
+                          {file.languageName} · {new Date(file.updatedAt).toLocaleString()}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                {selectedSavedCode && (
+                  <div className="flex h-10 shrink-0 items-center border-b border-gray-800 px-4 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                    {selectedSavedCode.languageName} / {selectedSavedCode.fileName}
+                  </div>
+                )}
+                <div className="min-h-0 flex-1 overflow-auto p-4">
+                  {isSavedCodeContentLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading file...
+                    </div>
+                  ) : savedCodeError && selectedSavedCode ? (
+                    <p className="text-sm text-red-300">{savedCodeError}</p>
+                  ) : savedCodeContent !== null ? (
+                    <pre className="whitespace-pre-wrap break-words font-mono text-sm text-gray-200">{savedCodeContent}</pre>
+                  ) : (
+                    <p className="text-sm text-gray-500">Select a saved file to view its contents.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
       </div>
   );
 }

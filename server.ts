@@ -1,9 +1,30 @@
 import express from 'express';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import { LANGUAGES } from './src/constants/languages';
+
+const getLanguageFolderName = (languageId: string) => {
+  const language = LANGUAGES.find(candidate => candidate.id === languageId);
+  if (!language) return null;
+  return (language.id === 'csharp'
+    ? 'C#'
+    : language.id === 'mysql'
+      ? 'SQL'
+      : language.name).replace(/[<>:"/\\|?*]/g, '_');
+};
+
+const getSafeBaseName = (fileName: string) => fileName
+  .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+  .replace(/\.[^.]*$/, '')
+  .replace(/[. ]+$/g, '')
+  .trim()
+  .slice(0, 100) || 'code';
+
+const getSavedCodeRoot = () => resolve(process.env.SAVED_CODE_DIR || 'saved-code');
+
+const isMissingPath = (error: unknown) =>
+  typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 
 async function startServer() {
   const app = express();
@@ -14,26 +35,14 @@ async function startServer() {
   app.post('/api/save-code', async (req, res) => {
     const body = req.body as { languageId?: unknown; fileName?: unknown; code?: unknown } | undefined;
     const { languageId, fileName, code } = body ?? {};
-    const language = LANGUAGES.find(candidate => candidate.id === languageId);
+    const folderName = typeof languageId === 'string' ? getLanguageFolderName(languageId) : null;
 
-    if (!language || typeof fileName !== 'string' || typeof code !== 'string') {
+    if (!folderName || typeof fileName !== 'string' || typeof code !== 'string') {
       return res.status(400).json({ error: 'A valid language, filename, and code are required' });
     }
 
-    const folderName = (language.id === 'csharp'
-      ? 'C#'
-      : language.id === 'mysql'
-        ? 'SQL'
-        : language.name).replace(/[<>:"/\\|?*]/g, '_');
-    const baseName = fileName
-      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
-      .replace(/\.[^.]*$/, '')
-      .replace(/[. ]+$/g, '')
-      .trim()
-      .slice(0, 100);
-    const safeBaseName = baseName || 'code';
-    const outputDirectory = join(homedir(), 'Downloads', 'Compiler World', folderName);
-    const outputPath = join(outputDirectory, `${safeBaseName}.txt`);
+    const outputDirectory = join(getSavedCodeRoot(), 'Compiler World', folderName);
+    const outputPath = join(outputDirectory, `${getSafeBaseName(fileName)}.txt`);
 
     try {
       await mkdir(outputDirectory, { recursive: true });
@@ -42,6 +51,78 @@ async function startServer() {
     } catch (error) {
       console.error('Code save error:', error);
       return res.status(500).json({ error: 'Could not save the code file' });
+    }
+  });
+
+  app.get('/api/saved-code', async (_req, res) => {
+    try {
+      const compilerDirectory = join(getSavedCodeRoot(), 'Compiler World');
+      const savedFiles: {
+        languageId: string;
+        languageName: string;
+        fileName: string;
+        updatedAt: string;
+      }[] = [];
+
+      for (const language of LANGUAGES) {
+        const folderName = getLanguageFolderName(language.id);
+        if (!folderName) continue;
+
+        const languageDirectory = join(compilerDirectory, folderName);
+        let entries;
+        try {
+          entries = await readdir(languageDirectory, { withFileTypes: true });
+        } catch (error) {
+          if (isMissingPath(error)) continue;
+          throw error;
+        }
+
+        for (const entry of entries) {
+          if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.txt')) continue;
+          const filePath = join(languageDirectory, entry.name);
+          const fileStats = await stat(filePath);
+          savedFiles.push({
+            languageId: language.id,
+            languageName: folderName,
+            fileName: entry.name,
+            updatedAt: fileStats.mtime.toISOString(),
+          });
+        }
+      }
+
+      savedFiles.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+      return res.json({ files: savedFiles });
+    } catch (error) {
+      console.error('Saved code listing error:', error);
+      return res.status(500).json({ error: 'Could not load saved code history' });
+    }
+  });
+
+  app.get('/api/saved-code/file', async (req, res) => {
+    const languageId = req.query.languageId;
+    const fileName = req.query.fileName;
+    const folderName = typeof languageId === 'string' ? getLanguageFolderName(languageId) : null;
+
+    if (!folderName || typeof fileName !== 'string' || !fileName.toLowerCase().endsWith('.txt')) {
+      return res.status(400).json({ error: 'A valid language and text filename are required' });
+    }
+
+    const baseName = fileName.slice(0, -4);
+    const safeFileName = `${getSafeBaseName(baseName)}.txt`;
+    if (safeFileName !== fileName) {
+      return res.status(400).json({ error: 'Invalid saved filename' });
+    }
+
+    const filePath = join(getSavedCodeRoot(), 'Compiler World', folderName, safeFileName);
+    try {
+      const code = await readFile(filePath, 'utf8');
+      return res.json({ code });
+    } catch (error) {
+      if (isMissingPath(error)) {
+        return res.status(404).json({ error: 'Saved code file was not found' });
+      }
+      console.error('Saved code read error:', error);
+      return res.status(500).json({ error: 'Could not read the saved code file' });
     }
   });
 
