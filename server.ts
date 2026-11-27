@@ -1,5 +1,6 @@
 import express from 'express';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, copyFile, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import { LANGUAGES } from './src/constants/languages';
@@ -20,6 +21,9 @@ const getSafeBaseName = (fileName: string) => fileName
   .replace(/[. ]+$/g, '')
   .trim()
   .slice(0, 100) || 'code';
+
+const getSafeSavedFileName = (fileName: string) =>
+  `${getSafeBaseName(fileName.replace(/\.txt$/i, ''))}.txt`;
 
 const getSavedCodeRoot = () => resolve(process.env.SAVED_CODE_DIR || 'saved-code');
 
@@ -123,6 +127,54 @@ async function startServer() {
       }
       console.error('Saved code read error:', error);
       return res.status(500).json({ error: 'Could not read the saved code file' });
+    }
+  });
+
+  app.post('/api/saved-code/rename', async (req, res) => {
+    const body = req.body as {
+      languageId?: unknown;
+      fileName?: unknown;
+      newFileName?: unknown;
+    } | undefined;
+    const { languageId, fileName, newFileName } = body ?? {};
+    const folderName = typeof languageId === 'string' ? getLanguageFolderName(languageId) : null;
+
+    if (
+      !folderName ||
+      typeof fileName !== 'string' ||
+      typeof newFileName !== 'string' ||
+      getSafeSavedFileName(fileName) !== fileName
+    ) {
+      return res.status(400).json({ error: 'A valid language and filenames are required' });
+    }
+
+    const safeNewFileName = getSafeSavedFileName(newFileName);
+    if (safeNewFileName === fileName) {
+      return res.json({ fileName });
+    }
+
+    const languageDirectory = join(getSavedCodeRoot(), 'Compiler World', folderName);
+    const oldPath = join(languageDirectory, fileName);
+    const newPath = join(languageDirectory, safeNewFileName);
+
+    try {
+      await access(oldPath);
+      try {
+        await copyFile(oldPath, newPath, constants.COPYFILE_EXCL);
+      } catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST') {
+          return res.status(409).json({ error: 'A file with that name already exists' });
+        }
+        throw error;
+      }
+      await unlink(oldPath);
+      return res.json({ fileName: safeNewFileName });
+    } catch (error) {
+      if (isMissingPath(error)) {
+        return res.status(404).json({ error: 'Saved code file was not found' });
+      }
+      console.error('Saved code rename error:', error);
+      return res.status(500).json({ error: 'Could not rename the saved code file' });
     }
   });
 

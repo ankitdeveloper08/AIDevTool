@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import { Play, Plus, X, Database, Loader2, Layout, ChevronLeft, ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp, Search, Files, FileCode2, PanelRight, Save, History } from 'lucide-react';
+import { Play, Plus, X, Database, Loader2, Layout, ChevronLeft, ChevronRight, ChevronDown, ChevronsUpDown, ChevronsDownUp, Search, Files, FileCode2, PanelRight, Save, History, Pencil } from 'lucide-react';
 import { cn } from './utils/cn';
 import { LANGUAGES } from './constants/languages';
 import { executeCode } from './utils/execute';
@@ -150,6 +150,9 @@ export default function App() {
   const [savedCodeError, setSavedCodeError] = useState<string | null>(null);
   const [selectedSavedCode, setSelectedSavedCode] = useState<SavedCodeEntry | null>(null);
   const [savedCodeContent, setSavedCodeContent] = useState<string | null>(null);
+  const [isRenamingSavedCode, setIsRenamingSavedCode] = useState(false);
+  const [renameSavedCodeName, setRenameSavedCodeName] = useState('');
+  const [isRenamingSavedCodeLoading, setIsRenamingSavedCodeLoading] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const compilerPickerRef = useRef<HTMLDivElement>(null);
   const sqlEditorColumnRef = useRef<HTMLDivElement>(null);
@@ -258,6 +261,7 @@ export default function App() {
     setSavedCodeError(null);
     setSelectedSavedCode(null);
     setSavedCodeContent(null);
+    setIsRenamingSavedCode(false);
 
     try {
       const response = await fetch('/api/saved-code');
@@ -278,6 +282,7 @@ export default function App() {
     setSavedCodeContent(null);
     setSavedCodeError(null);
     setIsSavedCodeContentLoading(true);
+    setIsRenamingSavedCode(false);
 
     try {
       const params = new URLSearchParams({ languageId: file.languageId, fileName: file.fileName });
@@ -291,6 +296,48 @@ export default function App() {
       setSavedCodeError(message);
     } finally {
       setIsSavedCodeContentLoading(false);
+    }
+  };
+
+  const handleRenameSavedCode = async () => {
+    if (!selectedSavedCode || !renameSavedCodeName.trim()) {
+      setSavedCodeError('Enter a filename.');
+      return;
+    }
+
+    setIsRenamingSavedCodeLoading(true);
+    setSavedCodeError(null);
+    try {
+      const response = await fetch('/api/saved-code/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          languageId: selectedSavedCode.languageId,
+          fileName: selectedSavedCode.fileName,
+          newFileName: renameSavedCodeName,
+        }),
+      });
+      const result: { error?: string; fileName?: string } = await response.json();
+      if (!response.ok) throw new Error(result.error || `Rename failed (HTTP ${response.status})`);
+      if (!result.fileName) throw new Error('Rename service did not return the new filename.');
+
+      const renamedFile = {
+        ...selectedSavedCode,
+        fileName: result.fileName,
+        updatedAt: new Date().toISOString(),
+      };
+      setSavedCodeFiles(files => files.map(file =>
+        file.languageId === selectedSavedCode.languageId && file.fileName === selectedSavedCode.fileName
+          ? renamedFile
+          : file
+      ));
+      setSelectedSavedCode(renamedFile);
+      setIsRenamingSavedCode(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not rename the saved code file';
+      setSavedCodeError(message);
+    } finally {
+      setIsRenamingSavedCodeLoading(false);
     }
   };
 
@@ -1116,8 +1163,60 @@ export default function App() {
               </div>
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 {selectedSavedCode && (
-                  <div className="flex h-10 shrink-0 items-center border-b border-gray-800 px-4 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                    {selectedSavedCode.languageName} / {selectedSavedCode.fileName}
+                  <div className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-gray-800 px-4 py-1.5">
+                    {isRenamingSavedCode ? (
+                      <div className="flex min-w-0 items-center gap-2">
+                        <input
+                          autoFocus
+                          type="text"
+                          aria-label="Rename saved file"
+                          value={renameSavedCodeName}
+                          onChange={event => setRenameSavedCodeName(event.target.value)}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') void handleRenameSavedCode();
+                            if (event.key === 'Escape') setIsRenamingSavedCode(false);
+                          }}
+                          className="w-40 rounded-md border border-gray-700 bg-[#0f111a] px-2 py-1 text-sm text-gray-100 outline-none focus:border-blue-500"
+                        />
+                        <span className="text-sm text-gray-400">.txt</span>
+                        <button
+                          type="button"
+                          onClick={handleRenameSavedCode}
+                          disabled={isRenamingSavedCodeLoading}
+                          className="rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {isRenamingSavedCodeLoading ? 'Saving...' : 'Save name'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsRenamingSavedCode(false)}
+                          disabled={isRenamingSavedCodeLoading}
+                          className="rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-white"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="truncate text-xs font-semibold uppercase tracking-wider text-gray-400">
+                          {selectedSavedCode.languageName} / {selectedSavedCode.fileName}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenameSavedCodeName(selectedSavedCode.fileName.replace(/\.txt$/i, ''));
+                            setSavedCodeError(null);
+                            setIsRenamingSavedCode(true);
+                          }}
+                          className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-white"
+                          aria-label="Rename saved file"
+                          title="Rename saved file"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Rename
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
                 <div className="min-h-0 flex-1 overflow-auto p-4">
